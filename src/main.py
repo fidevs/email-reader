@@ -1,12 +1,13 @@
 from __future__ import print_function
+from datetime import datetime
+from typing import List
 
 import os.path
 import base64
-from datetime import datetime
 import time
-from typing import List
+import pandas as pd
+import psycopg2
 
-import googleapiclient.discovery
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -29,6 +30,20 @@ class GmailException(Exception):
 
 class NoEmailFound(GmailException):
     """No email found exception"""
+
+
+def get_database_connection():
+    try:
+        connection = psycopg2.connect(
+            host='localhost',
+            user='arkon',
+            password='4rk0n',
+            database='bimbo_xls'
+        )
+        print("conexión exitosa")
+        return connection
+    except Exception as ex:
+        print(ex)
 
 
 def gmail_authenticate():
@@ -154,17 +169,41 @@ def main():
                             attachment_id = body['attachmentId']
                             attachment_content = get_attachment_data(email['id'], attachment_id)
                             if attachment_content:
-                                print('     Saving new file...')
-                                suffix = datetime.now().strftime("%Y-%m-%d_%H:%M:%S:%f")
-                                file_name = suffix + file_name
-
-                                with open(os.path.join(save_location, file_name), 'wb') as _f:
-                                    _f.write(attachment_content)
-                                    print(f'        File {file_name} is saved at {save_location}')
-                                mark_message_as_read(email['id'])
+                                query = generate_updates_from_file(attachment_content)
+                                print(query)
+                                try:
+                                    connection = get_database_connection()
+                                    cursor = connection.cursor()
+                                    cursor.execute(query)
+                                    cursor.close()
+                                    connection.commit()
+                                    connection.close()
+                                    print('Query success')
+                                    mark_message_as_read(email['id'])
+                                except Exception as ex:
+                                    print(f'SQL error: {ex}')
+                                # print('     Saving new file...')
+                                # suffix = datetime.now().strftime("%Y-%m-%d_%H:%M:%S:%f")
+                                # file_name = suffix + file_name
+                                #
+                                # with open(os.path.join(save_location, file_name), 'wb') as _f:
+                                #     _f.write(attachment_content)
+                                #     print(f'        File {file_name} is saved at {save_location}')
 
         print('Waiting 10 seconds for next execution...\n\n\n')
         time.sleep(10)
+
+
+def generate_updates_from_file(file):
+    df = pd.read_excel(file, index_col=0)
+    query = ''
+    index_list = list(df.index.values)
+    for label, content in df.items():
+        for idx in index_list:
+            new_query = "UPDATE period_org_module SET status = '{}' WHERE org_name = '{}' AND module = '{}';"\
+                .format(content[idx], label, idx.replace("'", "''"))
+            query = query + new_query + '\n'
+    return query
 
 
 if __name__ == '__main__':
