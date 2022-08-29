@@ -1,5 +1,4 @@
 from __future__ import print_function
-from datetime import datetime
 from typing import List
 
 import os.path
@@ -145,7 +144,6 @@ def mark_message_as_read(message_id):
 def main():
     print('Logging in...')
     gmail_authenticate()
-    save_location = os.getcwd()
 
     if service is None:
         print('Not API service available, ending execution...')
@@ -163,17 +161,16 @@ def main():
 
                 if 'parts' in msg_detail_payload:
                     for msg_payload in msg_detail_payload['parts']:
-                        file_name = msg_payload['filename']
                         body = msg_payload['body']
                         if 'attachmentId' in body:
                             attachment_id = body['attachmentId']
                             attachment_content = get_attachment_data(email['id'], attachment_id)
                             if attachment_content:
                                 query = generate_updates_from_file(attachment_content)
-                                print(query)
                                 try:
                                     connection = get_database_connection()
                                     cursor = connection.cursor()
+                                    print(query)
                                     cursor.execute(query)
                                     cursor.close()
                                     connection.commit()
@@ -182,13 +179,6 @@ def main():
                                     mark_message_as_read(email['id'])
                                 except Exception as ex:
                                     print(f'SQL error: {ex}')
-                                # print('     Saving new file...')
-                                # suffix = datetime.now().strftime("%Y-%m-%d_%H:%M:%S:%f")
-                                # file_name = suffix + file_name
-                                #
-                                # with open(os.path.join(save_location, file_name), 'wb') as _f:
-                                #     _f.write(attachment_content)
-                                #     print(f'        File {file_name} is saved at {save_location}')
 
         print('Waiting 10 seconds for next execution...\n\n\n')
         time.sleep(10)
